@@ -1,0 +1,73 @@
+---
+title: "Data Centers and Congress"
+author: "Luke Hill"
+date: "2026-04-06"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(congress)
+library(httr2)
+
+
+```
+
+```{r}
+
+fetch_all_bills = function(congress = 119) {
+  all_bills = list()
+  offset = 0
+  
+  repeat {
+    resp = request("https://api.congress.gov/v3/bill") %>%
+      req_url_path_append(congress) %>%
+      req_url_query(
+        api_key = Sys.getenv("CONGRESS_KEY"),
+        format = "json",
+        limit = 250,
+        offset = offset
+      ) %>%
+      req_headers(Accept = "application/json") %>%
+      req_perform()
+    
+    results = resp %>% resp_body_json()
+    all_bills = c(all_bills, results$bills)
+    
+    if (is.null(results$pagination$`next`)) break
+    offset = offset + 250
+    Sys.sleep(0.5)
+  }
+  
+  bind_rows(all_bills)
+}
+
+bills = fetch_all_bills()
+bills %>% count(type)
+
+sig_bills = bills %>% filter(type %in% c("HR", "S", "SJRES", "HJRES"))
+AI_bills = sig_bills %>% filter(
+  str_detect(title, "\\bAI\\b") |
+  str_detect(title, regex("artificial intelligence", ignore_case = TRUE)) |
+  str_detect(title, regex("data|data centers", ignore_case = TRUE))
+)
+
+
+```
+
+```{r}
+
+write_csv(AI_bills, "Data/Built/AI_bills_119.csv")
+
+#I manually edited out all non-AI/data center bills. For instance, a bill with the title "Using data to help veterans" is irrelevant to the project, but Tom Cotton's DATA act is. All data sets are available for comparison.
+
+AI_bills_man = read_csv('Data/Built/AI_data_bills_119_man_filter.csv')
+
+AI_bills_man = AI_bills_man %>% distinct(number, type, .keep_all = TRUE)
+
+
+```
+
+
